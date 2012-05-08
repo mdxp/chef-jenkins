@@ -141,8 +141,9 @@ class Chef
       cu = Chef::Knife::CookbookUpload.new
       cu.name_args = cookbooks 
       cu.config[:environment] = Chef::Config[:jenkins][:env_to]
-      cu.config[:freeze] = true
+      cu.config[:freeze] = false
       cu.run
+      save_environment_file
     end
 
     def prop(env_from=Chef::Config[:jenkins][:env_from], env_to=Chef::Config[:jenkins][:env_to])
@@ -150,12 +151,21 @@ class Chef
       to = Chef::Environment.load(env_to)
       to.cookbook_versions(from.cookbook_versions)
       to.save
+      save_environment_file(env_to)
+    end
+
+    def save_environment_file(env_to=Chef::Config[:jenkins][:env_to])
+      Chef::Log.info("Saving environmnent #{env_to} to #{env_to}.json")
+      dir = Chef::Config[:jenkins][:repo_dir]
+      `knife environment show "#{env_to}" -Fj > "#{dir}/environments/#{env_to}.json"`
+
+      @git.add("#{dir}/environments/#{env_to}.json")
+      @git.commit("Updating #{env_to} with the latest cookbook versions", :allow_empty => true)
+      push_to_upstream
     end
     
     def sync(cookbook_path=Chef::Config[:cookbook_path], repo_dir=Chef::Config[:jenkins][:repo_dir])
       add_upstream
-
-      git_branch(integration_branch_name)
 
       cookbooks_to_change = []
 
@@ -170,6 +180,8 @@ class Chef
         Chef::Log.info("No cookbooks have changed")
         exit 0
       end
+
+      git_branch(integration_branch_name)
 
       cookbooks_to_change.each do |cookbook|
         cookbook_path.each do |path|
