@@ -157,7 +157,11 @@ class Chef
     def save_environment_file(env_to=Chef::Config[:jenkins][:env_to])
       Chef::Log.info("Saving environmnent #{env_to} to #{env_to}.json")
       dir = Chef::Config[:jenkins][:repo_dir]
-      `knife environment show "#{env_to}" -Fj > "#{dir}/environments/#{env_to}.json"`
+      
+      envto = Chef::Environment.load(env_to)
+      File.open(File.join(dir, "environments/#{envto}.json"), "w") do |env_file|
+        env_file.print(JSON.pretty_generate(envto))
+      end
 
       @git.add("#{dir}/environments/#{env_to}.json")
       @git.commit("Updating #{env_to} with the latest cookbook versions", :allow_empty => true)
