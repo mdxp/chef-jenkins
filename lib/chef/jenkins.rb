@@ -56,7 +56,7 @@ class Chef
                 Chef::Log.info("Auto incrementing #{metadatarb} version from #{major}.#{minor}.#{patch} to #{major}.#{minor}.#{new_patch}") 
                 line.replace("version '#{major}.#{minor}.#{new_patch}'\n")
             else
-                Chef::Log.info("User already incremented #{metadatarb} version from #{major}.#{minor}.#{patch} to #{major}.#{minor}.#{new_patch}") 
+                Chef::Log.info("User already incremented #{metadatarb} version from #{major}.#{minor}.#{patch} to #{current_version}") 
             end
 
           end
