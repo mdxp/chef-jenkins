@@ -26,6 +26,7 @@ require 'chef/environment'
 require 'chef/exceptions'
 require 'chef/cookbook_loader'
 require 'chef/cookbook_uploader'
+require 'chef/cookbook_version'
 require 'git'
 
 class Chef
@@ -40,7 +41,7 @@ class Chef
       @git.config("user.email", Chef::Config[:jenkins][:git_email])
     end
 
-    def bump_patch_level(metadatarb)
+    def bump_patch_level(metadatarb, cookbook_name)
       File.open(metadatarb, 'r+') do |f|
         lines = f.readlines
         lines.each do |line|
@@ -48,9 +49,16 @@ class Chef
             major = $1
             minor = $2
             patch = $3
-            new_patch = patch.to_i + 1
-            Chef::Log.info("Incrementing #{metadatarb} version from #{major}.#{minor}.#{patch} to #{major}.#{minor}.#{new_patch}") 
-            line.replace("version '#{major}.#{minor}.#{new_patch}'\n")
+            current_version = "#{major}.#{minor}.#{patch}"
+            available_versions = Chef::CookbookVersion.available_versions(cookbook_name)
+            if available_versions.include?(current_version)
+                new_patch = patch.to_i + 1
+                Chef::Log.info("Auto incrementing #{metadatarb} version from #{major}.#{minor}.#{patch} to #{major}.#{minor}.#{new_patch}") 
+                line.replace("version '#{major}.#{minor}.#{new_patch}'\n")
+            else
+                Chef::Log.info("User already incremented #{metadatarb} version from #{major}.#{minor}.#{patch} to #{current_version}") 
+            end
+
           end
         end
         f.pos = 0
@@ -190,7 +198,7 @@ class Chef
       cookbooks_to_change.each do |cookbook|
         cookbook_path.each do |path|
           metadata_file = File.join(path, cookbook, "metadata.rb")
-          bump_patch_level(metadata_file) if File.exists?(metadata_file)
+          bump_patch_level(metadata_file, cookbook) if File.exists?(metadata_file)
         end
       end
 
