@@ -206,8 +206,6 @@ class Chef
 
       write_current_commit(repo_dir)
 
-      push_to_upstream
-
       upload_cookbooks(cookbooks_to_change)
     ensure
       @git.branch("master").checkout
