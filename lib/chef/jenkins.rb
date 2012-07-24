@@ -120,7 +120,7 @@ class Chef
     def commit_changes(cookbook_list=[])
       begin
         @git.commit("#{cookbook_list.length} cookbooks patch levels updated by Chef Jenkins\n\n" + cookbook_list.join("\n"), :add_all => true)
-      rescue Git::GitExecuteError =>
+      rescue Git::GitExecuteError => e
         Chef::Log.debug("No thing to commit")
       end
     end
