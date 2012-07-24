@@ -56,7 +56,7 @@ class Chef
                 Chef::Log.info("Auto incrementing #{metadatarb} version from #{major}.#{minor}.#{patch} to #{major}.#{minor}.#{new_patch}") 
                 line.replace("version '#{major}.#{minor}.#{new_patch}'\n")
             else
-                Chef::Log.info("User already incremented #{metadatarb} version from #{major}.#{minor}.#{patch} to #{current_version}") 
+                Chef::Log.info("User already incremented #{metadatarb} version to #{current_version}") 
             end
 
           end
@@ -118,7 +118,11 @@ class Chef
     end
 
     def commit_changes(cookbook_list=[])
-      @git.commit("#{cookbook_list.length} cookbooks patch levels updated by Chef Jenkins\n\n" + cookbook_list.join("\n"), :add_all => true)
+      begin
+        @git.commit("#{cookbook_list.length} cookbooks patch levels updated by Chef Jenkins\n\n" + cookbook_list.join("\n"), :add_all => true)
+      rescue Git::GitExecuteError =>
+        Chef::Log.debug("No thing to commit")
+      end
     end
 
     def integration_branch_name
