@@ -159,8 +159,16 @@ class Chef
     end
 
     def prop(env_from=Chef::Config[:jenkins][:env_from], env_to=Chef::Config[:jenkins][:env_to])
+      add_upstream
+
       from = Chef::Environment.load(env_from)  
       to = Chef::Environment.load(env_to)
+
+      if from.cookbook_versions.eql? to.cookbook_versions
+        Chef::Log.info("#{env_from} and #{env_to} are already in sync")
+        exit 0
+      end
+
       to.cookbook_versions(from.cookbook_versions)
       to.save
       save_environment_file(env_to)
