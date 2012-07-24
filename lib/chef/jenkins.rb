@@ -170,7 +170,7 @@ class Chef
       Chef::Log.info("Saving environmnent #{env_to} to #{env_to}.json")
       dir = Chef::Config[:jenkins][:repo_dir]
       
-      envto = Chef::Environment.load(env_to)
+      envto = Chef::Environment.load(env_to).to_hash
       File.open(File.join(dir, "environments/#{envto}.json"), "w") do |env_file|
         envto['cookbook_versions'] = Hash[envto['cookbook_versions'].sort]
         env_file.print(JSON.pretty_generate(envto))
