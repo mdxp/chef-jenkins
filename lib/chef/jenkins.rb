@@ -24,6 +24,7 @@ require 'chef/knife'
 require 'chef/knife/core/object_loader'
 require 'chef/knife/cookbook_upload'
 require 'chef/knife/role_from_file'
+require 'chef/knife/data_bag_from_file'
 require 'chef/environment'
 require 'chef/exceptions'
 require 'chef/cookbook_loader'
@@ -103,7 +104,7 @@ class Chef
       role_path.each do |path|
         Dir[File.join(File.expand_path(path), '*')].each do |role|
           if File.file?(role)
-            if role =~ /#{File.expand_path(path)}\/(.+\.rb)/
+            if role =~ /(#{File.expand_path(path)}\/.+\.rb)/
               changed_roles << $1
             end
           end
@@ -123,6 +124,35 @@ class Chef
         end
       end
       changed_roles.uniq
+    end
+
+    def find_all_data_bags(data_bag_path=Chef::Config[:data_bag_path])
+      changed_data_bags = []
+      Dir[File.join(File.expand_path(data_bag_path[0]), '*')].each do |path|
+        if File.directory?(path)
+          Dir[File.join(File.expand_path(path), '*')].each do |data|
+            if File.file?(data)
+              if data =~ /(#{File.expand_path(path)}\/.+\.json)/
+                changed_data_bags << $1
+              end
+            end
+          end
+        end
+      end
+      changed_data_bags.uniq
+    end
+
+    def find_changed_data_bags(sha1, sha2, data_bag_path=Chef::Config[:data_bag_path], repo_path=Chef::Config[:jenkins][:repo_dir])
+      changed_data_bags = []
+      @git.diff(sha1, sha2).each do |diff_file|
+        data_bag_path.each do |path|
+          full_path_to_file = File.expand_path(File.join(repo_path, diff_file.path))
+          if full_path_to_file =~ /(^#{File.expand_path(path)}\/.+\.json)/
+            changed_data_bags << $1
+          end
+        end
+      end
+      changed_data_bags.uniq
     end
 
     def current_commit
@@ -197,6 +227,19 @@ class Chef
       end
     end
 
+    def upload_data_bags(data_bags=[])
+      unless data_bags.empty?
+        data_bags.each do |data_bag_full_path|
+          file_name = File.basename(data_bag_full_path)
+          folder_name = File.basename(File.dirname(data_bag_full_path)) 
+          cu = Chef::Knife::DataBagFromFile.new
+          cu.config[:all] = false
+          cu.name_args = ["#{folder_name}", "#{file_name}"] 
+          cu.run
+        end
+      end
+    end
+
     def save_environment_file(env_to=Chef::Config[:jenkins][:env_to])
       Chef::Log.info("Saving environmnent #{env_to} to #{env_to}.json")
       dir = Chef::Config[:jenkins][:repo_dir]
@@ -214,15 +257,6 @@ class Chef
     def prop(env_from=Chef::Config[:jenkins][:env_from], env_to=Chef::Config[:jenkins][:env_to])
       add_upstream
       
-      #Testing here
-      last_commit = read_last_commit
-      Chef::Log.info(find_all_roles)
-      Chef::Log.info(find_changed_roles(last_commit, 'HEAD'))
-
-      roles_to_change = find_changed_roles(last_commit, 'HEAD')
-      upload_roles(roles_to_change)
-      # ENd test
-
       from = Chef::Environment.load(env_from)  
       to = Chef::Environment.load(env_to)
 
@@ -247,9 +281,11 @@ class Chef
       if last_commit
         cookbooks_to_change = find_changed_cookbooks(last_commit, 'HEAD')
         roles_to_change = find_changed_roles(last_commit, 'HEAD')
+        data_bags_to_change = find_changed_data_bags(last_commit, 'HEAD')
       else
         cookbooks_to_change = find_all_cookbooks
         roles_to_change = find_all_roles
+        data_bags_to_change = find_all_data_bags
       end
 
       if cookbooks_to_change.length == 0 || cookbooks_to_change.nil?
@@ -262,7 +298,12 @@ class Chef
         no_role_change = true
       end
     
-      if no_cookbook_change and no_role_change 
+      if data_bags_to_change.length == 0 || data_bags_to_change.nil?
+        Chef::Log.info("No daga_bags have changed")
+        no_data_bag_change = true
+      end
+
+      if no_cookbook_change and no_role_change and no_data_bag_change
         Chef::Log.info("Nothing to do, exit")
         exit 0
       end
@@ -281,6 +322,7 @@ class Chef
         Chef::Log.info("Cookbook versions updated")
       end
 
+      upload_data_bags(data_bags_to_change)
       upload_roles(roles_to_change)
       upload_cookbooks(cookbooks_to_change)
 
