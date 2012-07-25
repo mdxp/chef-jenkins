@@ -21,7 +21,9 @@ require 'chef/jenkins/config'
 require 'chef/config'
 require 'chef/log'
 require 'chef/knife'
+require 'chef/knife/core/object_loader'
 require 'chef/knife/cookbook_upload'
+require 'chef/knife/role_from_file'
 require 'chef/environment'
 require 'chef/exceptions'
 require 'chef/cookbook_loader'
@@ -96,6 +98,33 @@ class Chef
       changed_cookbooks.uniq
     end
 
+    def find_all_roles(role_path=Chef::Config[:role_path])
+      changed_roles = []
+      role_path.each do |path|
+        Dir[File.join(File.expand_path(path), '*')].each do |role|
+          if File.file?(role)
+            if role =~ /#{File.expand_path(path)}\/(.+\.rb)/
+              changed_roles << $1
+            end
+          end
+        end
+      end
+      changed_roles.uniq
+    end
+
+    def find_changed_roles(sha1, sha2, role_path=Chef::Config[:role_path], repo_path=Chef::Config[:jenkins][:repo_dir])
+      changed_roles = []
+      @git.diff(sha1, sha2).each do |diff_file|
+        role_path.each do |path|
+          full_path_to_file = File.expand_path(File.join(repo_path, diff_file.path))
+          if full_path_to_file =~ /(^#{File.expand_path(path)}\/.+\.rb)/
+            changed_roles << $1
+          end
+        end
+      end
+      changed_roles.uniq
+    end
+
     def current_commit
       @git.log(1)
     end
@@ -117,7 +146,7 @@ class Chef
       end
     end
 
-    def commit_changes(cookbook_list=[])
+    def commit_cookbook_changes(cookbook_list=[])
       begin
         @git.commit("#{cookbook_list.length} cookbooks patch levels updated by Chef Jenkins\n\n" + cookbook_list.join("\n"), :add_all => true)
       rescue Git::GitExecuteError => e
@@ -150,28 +179,22 @@ class Chef
     end
 
     def upload_cookbooks(cookbooks=[])
-      cu = Chef::Knife::CookbookUpload.new
-      cu.name_args = cookbooks 
-      cu.config[:environment] = Chef::Config[:jenkins][:env_to]
-      cu.config[:freeze] = false
-      cu.run
-      save_environment_file
+      unless cookbooks.empty?
+        cu = Chef::Knife::CookbookUpload.new
+        cu.name_args = cookbooks 
+        cu.config[:environment] = Chef::Config[:jenkins][:env_to]
+        cu.config[:freeze] = false
+        cu.run
+        save_environment_file
+      end
     end
 
-    def prop(env_from=Chef::Config[:jenkins][:env_from], env_to=Chef::Config[:jenkins][:env_to])
-      add_upstream
-
-      from = Chef::Environment.load(env_from)  
-      to = Chef::Environment.load(env_to)
-
-      if from.cookbook_versions.eql? to.cookbook_versions
-        Chef::Log.info("#{env_from} and #{env_to} are already in sync")
-        exit 0
+    def upload_roles(roles=[])
+      unless roles.empty?
+        cu = Chef::Knife::RoleFromFile.new
+        cu.name_args = roles 
+        cu.run
       end
-
-      to.cookbook_versions(from.cookbook_versions)
-      to.save
-      save_environment_file(env_to)
     end
 
     def save_environment_file(env_to=Chef::Config[:jenkins][:env_to])
@@ -186,40 +209,83 @@ class Chef
 
       @git.add("#{dir}/environments/#{env_to}.json")
       @git.commit("Updating #{env_to} with the latest cookbook versions", :allow_empty => true)
-      push_to_upstream
     end
     
-    def sync(cookbook_path=Chef::Config[:cookbook_path], repo_dir=Chef::Config[:jenkins][:repo_dir])
+    def prop(env_from=Chef::Config[:jenkins][:env_from], env_to=Chef::Config[:jenkins][:env_to])
+      add_upstream
+      
+      #Testing here
+      last_commit = read_last_commit
+      Chef::Log.info(find_all_roles)
+      Chef::Log.info(find_changed_roles(last_commit, 'HEAD'))
+
+      roles_to_change = find_changed_roles(last_commit, 'HEAD')
+      upload_roles(roles_to_change)
+      # ENd test
+
+      from = Chef::Environment.load(env_from)  
+      to = Chef::Environment.load(env_to)
+
+      if from.cookbook_versions.eql? to.cookbook_versions
+        Chef::Log.info("#{env_from} and #{env_to} are already in sync")
+        exit 0
+      end
+
+      to.cookbook_versions(from.cookbook_versions)
+      to.save
+      save_environment_file(env_to)
+      push_to_upstream
+    end
+
+    def sync(cookbook_path=Chef::Config[:cookbook_path], role_path=Chef::Config[:role_path], repo_dir=Chef::Config[:jenkins][:repo_dir])
       add_upstream
 
       cookbooks_to_change = []
+      roles_to_change = []
 
       last_commit = read_last_commit
       if last_commit
         cookbooks_to_change = find_changed_cookbooks(last_commit, 'HEAD')
+        roles_to_change = find_changed_roles(last_commit, 'HEAD')
       else
         cookbooks_to_change = find_all_cookbooks
+        roles_to_change = find_all_roles
       end
 
       if cookbooks_to_change.length == 0 || cookbooks_to_change.nil?
         Chef::Log.info("No cookbooks have changed")
+        no_cookbook_change = true
+      end
+
+      if roles_to_change.length == 0 || roles_to_change.nil?
+        Chef::Log.info("No roles have changed")
+        no_role_change = true
+      end
+    
+      if no_cookbook_change and no_role_change 
+        Chef::Log.info("Nothing to do, exit")
         exit 0
       end
 
       git_branch(integration_branch_name)
 
-      cookbooks_to_change.each do |cookbook|
-        cookbook_path.each do |path|
-          metadata_file = File.join(path, cookbook, "metadata.rb")
-          bump_patch_level(metadata_file, cookbook) if File.exists?(metadata_file)
+      unless no_cookbook_change
+        cookbooks_to_change.each do |cookbook|
+          cookbook_path.each do |path|
+            metadata_file = File.join(path, cookbook, "metadata.rb")
+            bump_patch_level(metadata_file, cookbook) if File.exists?(metadata_file)
+          end
         end
+
+        commit_cookbook_changes(cookbooks_to_change)
+        Chef::Log.info("Cookbook versions updated")
       end
 
-      commit_changes(cookbooks_to_change)
+      upload_roles(roles_to_change)
+      upload_cookbooks(cookbooks_to_change)
 
       write_current_commit(repo_dir)
-
-      upload_cookbooks(cookbooks_to_change)
+      push_to_upstream
     ensure
       @git.branch("master").checkout
     end
