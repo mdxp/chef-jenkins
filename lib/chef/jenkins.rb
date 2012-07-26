@@ -54,14 +54,15 @@ class Chef
             patch = $3
             current_version = "#{major}.#{minor}.#{patch}"
             available_versions = Chef::CookbookVersion.available_versions(cookbook_name)
-            if available_versions.include?(current_version)
-                new_patch = patch.to_i + 1
-                Chef::Log.info("Auto incrementing #{metadatarb} version from #{major}.#{minor}.#{patch} to #{major}.#{minor}.#{new_patch}") 
-                line.replace("version '#{major}.#{minor}.#{new_patch}'\n")
+            if available_versions.nil? 
+              Chef::Log.info("User added a new cookbook: #{cookbook_name}") 
+            elsif available_versions.include?(current_version)
+              new_patch = patch.to_i + 1
+              Chef::Log.info("Auto incrementing #{metadatarb} version from #{major}.#{minor}.#{patch} to #{major}.#{minor}.#{new_patch}") 
+              line.replace("version '#{major}.#{minor}.#{new_patch}'\n")
             else
-                Chef::Log.info("User already incremented #{metadatarb} version to #{current_version}") 
+              Chef::Log.info("User already incremented #{metadatarb} version to #{current_version}") 
             end
-
           end
         end
         f.pos = 0
@@ -274,8 +275,11 @@ class Chef
     def sync(cookbook_path=Chef::Config[:cookbook_path], role_path=Chef::Config[:role_path], repo_dir=Chef::Config[:jenkins][:repo_dir])
       add_upstream
 
+      git_branch(integration_branch_name)
+
       cookbooks_to_change = []
       roles_to_change = []
+      data_bags_to_change = []
 
       last_commit = read_last_commit
       if last_commit
@@ -299,7 +303,7 @@ class Chef
       end
     
       if data_bags_to_change.length == 0 || data_bags_to_change.nil?
-        Chef::Log.info("No daga_bags have changed")
+        Chef::Log.info("No data_bags have changed")
         no_data_bag_change = true
       end
 
@@ -307,8 +311,6 @@ class Chef
         Chef::Log.info("Nothing to do, exit")
         exit 0
       end
-
-      git_branch(integration_branch_name)
 
       unless no_cookbook_change
         cookbooks_to_change.each do |cookbook|
