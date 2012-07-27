@@ -53,6 +53,16 @@ class Chef::Application::Jenkins < Chef::Application
     :long => "--user USER",
     :description => "API Client Username"
 
+  option :test,
+    :short => "-t TESTS",
+    :long => "--test TESTS",
+    :description => "Add test(s) before uploading to chef server"
+
+  option :cookbook_freeze,
+    :short => "-f",
+    :long => "--freeze",
+    :description => "Freeze cookbook(s) while uploading"
+
   option :client_key,
     :short => "-k KEY",
     :long => "--key KEY",

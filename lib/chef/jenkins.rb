@@ -25,11 +25,15 @@ require 'chef/knife/core/object_loader'
 require 'chef/knife/cookbook_upload'
 require 'chef/knife/role_from_file'
 require 'chef/knife/data_bag_from_file'
+require 'chef/knife/cookbook_test'
 require 'chef/environment'
 require 'chef/exceptions'
 require 'chef/cookbook_loader'
 require 'chef/cookbook_uploader'
 require 'chef/cookbook_version'
+require 'foodcritic'
+require 'foodcritic/linter'
+require 'foodcritic/output'
 require 'git'
 
 class Chef
@@ -214,7 +218,7 @@ class Chef
         cu = Chef::Knife::CookbookUpload.new
         cu.name_args = cookbooks 
         cu.config[:environment] = Chef::Config[:jenkins][:env_to]
-        cu.config[:freeze] = false
+        cu.config[:freeze] = Chef::Config[:cookbook_freeze] ? true : false
         cu.run
         save_environment_file
       end
@@ -254,7 +258,42 @@ class Chef
       @git.add("#{dir}/environments/#{env_to}.json")
       @git.commit("Updating #{env_to} with the latest cookbook versions", :allow_empty => true)
     end
-    
+  
+    def knife_cookbook_test(cookbooks=[], cookbook_path=Chef::Config[:cookbook_path]) 
+      Chef::Log.info("---- knife cookbook test ----")
+      cookbook_test = Chef::Knife::CookbookTest.new
+      cookbook_test.config[:cookbook_path] = cookbook_path 
+      cookbook_test.config[:all] = false
+      cookbook_test.name_args = cookbooks
+      cookbook_test.run
+      Chef::Log.info("==== Knife cookbook test passed ====")
+    end
+
+    def foodcritic_test(cookbooks=[], cookbook_path=Chef::Config[:cookbook_path]) 
+      full_path_cookbooks = []
+      cookbook_path.each do |path|
+        cookbooks.each do |cookbook|
+          full_path = File.join(File.expand_path(path), cookbook)
+          full_path_cookbooks << full_path if File.exists?(full_path) 
+        end
+      end
+
+      print "\n" 
+      Chef::Log.info("---- foodcritic ----")
+      options = {}
+      options[:fail_tags] = Chef::Config[:jenkins][:foodcritic][:fail_tags]
+      options[:tags] = Chef::Config[:jenkins][:foodcritic][:tags]
+      options[:include_rules] = Chef::Config[:jenkins][:foodcritic][:include_rules]
+      Chef::Log.info("foodcritic options: #{options}")
+      Chef::Log.info("#{options.class}")
+      review = FoodCritic::Linter.new.check(full_path_cookbooks, options)
+      FoodCritic::ContextOutput.new.output(review)
+      if review.failed?
+        Chef::Log.info("==== Foodcritic failed ====")
+        exit 0
+      end
+    end
+
     def prop(env_from=Chef::Config[:jenkins][:env_from], env_to=Chef::Config[:jenkins][:env_to])
       add_upstream
       
@@ -312,7 +351,19 @@ class Chef
         exit 0
       end
 
+
       unless no_cookbook_change
+        # Run tests
+        tests = Chef::Config[:test]
+        if tests 
+          print "\n"
+          Chef::Log.info("==== Testing Now ====")
+          knife_cookbook_test(cookbooks_to_change) if tests.include?("ruby")
+          foodcritic_test(cookbooks_to_change) if tests.include?("foodcritic")
+          Chef::Log.info("==== Testing End ====")
+        end
+
+        # Bump cookbook patch version
         cookbooks_to_change.each do |cookbook|
           cookbook_path.each do |path|
             metadata_file = File.join(path, cookbook, "metadata.rb")
