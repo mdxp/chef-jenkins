@@ -17,4 +17,5 @@ group :development do
   gem "mixlib-log", ">= 0"
   gem "git", ">= 1.2.5"
   gem "rake", ">= 0"
+  gem "foodcritic", "~> 1.4.0"
 end

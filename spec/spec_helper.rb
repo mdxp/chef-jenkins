@@ -16,6 +16,8 @@ module AH
     system("rm -rf #{INFLIGHT}")
     system("mkdir -p #{INFLIGHT}")
     system("cp -r #{File.expand_path(File.join(ASSET_DIR, "*"))} #{INFLIGHT}")
+    # 
+    system("cd #{INFLIGHT}; git init; git add .; git commit -m 'init';")
     true
   end
 

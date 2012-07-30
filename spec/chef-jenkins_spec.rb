@@ -41,7 +41,7 @@ describe "Chef::Jenkins" do
 
   describe "bump_patch_level" do
     it "updates metadata.rb to have an incremented patch version" do
-      @cj.bump_patch_level(AH.file("metadata.rb"))
+      @cj.bump_patch_level(AH.file("metadata.rb"), "apache2")
       has_correct_version = false
       IO.foreach(AH.file("metadata.rb")) do |line|
         if line =~ /^version '0\.99\.5'$/
@@ -63,12 +63,13 @@ describe "Chef::Jenkins" do
     end
   end
 
-  describe "commit_changes" do
+  describe "commit_cookbook_changes" do
     it "commits changes to git, with the number and list of cookbooks" do
       cookbook_list = [ "apache2", "ntp" ]
+      cr = "\n"
       @cj.git.stub!(:commit).and_return(true)
-      @cj.git.should_receive(:commit).with("2 cookbooks patch levels updated by Chef Jenkins\n#{cookbook_list.join}", :add_all => true)
-      @cj.commit_changes(cookbook_list)
+      @cj.git.should_receive(:commit).with("2 cookbooks patch levels updated by Chef Jenkins\n\n#{cookbook_list.join(cr)}", :add_all => true)
+      @cj.commit_cookbook_changes(cookbook_list)
     end
   end
 
@@ -92,11 +93,48 @@ describe "Chef::Jenkins" do
   end
 
   describe "find_changed_cookbooks" do
-    it "prints a list of cookbooks changed since two commits" do
-      cblist = @cj.find_changed_cookbooks('5979a584b0c4e10df0a868609c0b4f0f74058860', '013162d426ed0b627470dbb3209ae7af5d7ef216', ["#{AH::ASSET_DIR}/cookbooks"]) 
+    it "prints a list of cookbooks changed since last commit" do
+      system("echo '#test' >> #{AH::INFLIGHT}/cookbooks/apache2/metadata.rb")
+      system("cd #{AH::INFLIGHT}; git commit -am 'changed cookbook apache2';")
+      cblist = @cj.find_changed_cookbooks('HEAD^', 'HEAD', ["#{AH::INFLIGHT}/cookbooks"]) 
       cblist.include?("apache2").should == true
-      cblist.include?("ntp").should == true
+      cblist.include?("ntp").should == false 
     end
   end
-end
 
+  describe "find_changed_roles" do
+    it "prints a list of roles changed since last commit" do
+      system("echo '#test' >> #{AH::INFLIGHT}/roles/apache2.rb")
+      system("echo '#test' >> #{AH::INFLIGHT}/roles/vagrant.rb")
+      system("cd #{AH::INFLIGHT}; git commit -am 'changed 2 roles';")
+      role_list = @cj.find_changed_roles('HEAD^', 'HEAD', ["#{AH::INFLIGHT}/roles"]) 
+      role_list = role_list.map {|i| File.basename(i)}
+      role_list.include?("apache2.rb").should == true
+      role_list.include?("vagrant.rb").should == true
+    end
+  end
+
+  describe "find_changed_data_bags" do
+    it "prints a list of data_bags changed since last commit" do
+      system("echo '#test' >> #{AH::INFLIGHT}/data_bags/users/foobar.json")
+      system("echo '#test' >> #{AH::INFLIGHT}/data_bags/groups/ops.json")
+      system("cd #{AH::INFLIGHT}; git commit -am 'changed 2 databags';")
+      data_bag_list = @cj.find_changed_data_bags('HEAD^', 'HEAD', ["#{AH::INFLIGHT}/data_bags"]) 
+      data_bag_list = data_bag_list.map {|i| File.basename(i)}
+      data_bag_list.include?("foobar.json").should == true
+      data_bag_list.include?("ops.json").should == true
+    end
+  end
+
+  describe "knife cookbook test" do
+    it "test cookbook(s) with knife cookbook test" do
+      @cj.knife_cookbook_test(["ntp","apache2"])
+    end   
+  end
+
+  describe "foodcritic test" do
+    it "test cookbook(s) foodcritic" do
+      @cj.foodctitic_test(["ntp","apache2"])
+    end   
+  end
+end

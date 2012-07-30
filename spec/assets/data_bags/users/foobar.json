@@ -1,0 +1,10 @@
+{
+  "groups": [
+    "ops"
+  ],
+  "comment": "Foo Bar",
+  "id": "foo",
+  "ssh_key": "test",
+  "password": "test"
+}
+

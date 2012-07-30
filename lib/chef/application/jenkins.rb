@@ -56,7 +56,7 @@ class Chef::Application::Jenkins < Chef::Application
   option :test,
     :short => "-t TESTS",
     :long => "--test TESTS",
-    :description => "Add test(s) before uploading to chef server"
+    :description => "Add test(s) before uploading to chef server; -t ruby,foodcritic"
 
   option :cookbook_freeze,
     :short => "-f",

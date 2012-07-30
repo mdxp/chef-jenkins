@@ -48,6 +48,8 @@ class Chef
       @git.config("user.email", Chef::Config[:jenkins][:git_email])
     end
 
+    # Automatically bump patch level if this is not done by any user.
+    # New added cookbook will not trigger auto bump.
     def bump_patch_level(metadatarb, cookbook_name)
       File.open(metadatarb, 'r+') do |f|
         lines = f.readlines
@@ -77,6 +79,7 @@ class Chef
       end
     end
 
+    # Find all cookbooks from cookbook_path that configure by user
     def find_all_cookbooks(cookbook_path=Chef::Config[:cookbook_path])
       changed_cookbooks = []
       cookbook_path.each do |path|
@@ -91,6 +94,8 @@ class Chef
       changed_cookbooks.uniq
     end
 
+    # Find changed cookbooks between two versions 
+    # Will return cookbook name, not a path
     def find_changed_cookbooks(sha1, sha2, cookbook_path=Chef::Config[:cookbook_path], repo_path=Chef::Config[:jenkins][:repo_dir])
       changed_cookbooks = []
       @git.diff(sha1, sha2).each do |diff_file|
@@ -104,6 +109,8 @@ class Chef
       changed_cookbooks.uniq
     end
 
+    # Find all roles from configured role_path
+    # Will return full path
     def find_all_roles(role_path=Chef::Config[:role_path])
       changed_roles = []
       role_path.each do |path|
@@ -118,6 +125,8 @@ class Chef
       changed_roles.uniq
     end
 
+    # Find changed roles between two versions 
+    # Will return full path
     def find_changed_roles(sha1, sha2, role_path=Chef::Config[:role_path], repo_path=Chef::Config[:jenkins][:repo_dir])
       changed_roles = []
       @git.diff(sha1, sha2).each do |diff_file|
@@ -131,6 +140,8 @@ class Chef
       changed_roles.uniq
     end
 
+    # Find all data_bag items between two versions 
+    # Will return full path
     def find_all_data_bags(data_bag_path=Chef::Config[:data_bag_path])
       changed_data_bags = []
       Dir[File.join(File.expand_path(data_bag_path[0]), '*')].each do |path|
@@ -147,6 +158,8 @@ class Chef
       changed_data_bags.uniq
     end
 
+    # Find changed data_bag items between two versions 
+    # Will return full path
     def find_changed_data_bags(sha1, sha2, data_bag_path=Chef::Config[:data_bag_path], repo_path=Chef::Config[:jenkins][:repo_dir])
       changed_data_bags = []
       @git.diff(sha1, sha2).each do |diff_file|
@@ -164,6 +177,7 @@ class Chef
       @git.log(1)
     end
 
+    # Write current commit (made by chef-jenkins) into a file, which will read by next build
     def write_current_commit(path=Chef::Config[:jenkins][:repo_dir])
       File.open(File.join(path, ".chef_jenkins_last_commit"), "w") do |f|
         f.print(current_commit)
@@ -173,6 +187,7 @@ class Chef
       true
     end
 
+    # Read the last commit made by chef-jenkins
     def read_last_commit(path=Chef::Config[:jenkins][:repo_dir])
       if File.exists?(File.join(path, ".chef_jenkins_last_commit"))
         IO.read(File.join(path, ".chef_jenkins_last_commit"))
@@ -181,6 +196,8 @@ class Chef
       end
     end
 
+    # If automatically bumped patch level, commit those changes
+    # Commit changed env.json file(s) 
     def commit_cookbook_changes(cookbook_list=[])
       begin
         @git.commit("#{cookbook_list.length} cookbooks patch levels updated by Chef Jenkins\n\n" + cookbook_list.join("\n"), :add_all => true)
@@ -201,6 +218,7 @@ class Chef
       @git.branch(branch_name).checkout
     end
 
+    # Make sure using the right upstream from config file
     def add_upstream(upstream_url=Chef::Config[:jenkins][:repo_url])
       begin
         @git.add_remote("upstream", upstream_url)
@@ -209,10 +227,13 @@ class Chef
       end
     end
 
+    # Push the changes back to upstream, after chef-jenkins job made changes
+    # like bump version or updated env.json
     def push_to_upstream(branch=Chef::Config[:jenkins][:branch])
       @git.push("upstream", "HEAD:#{branch}")
     end
 
+    # Upload cookbooks to chef server
     def upload_cookbooks(cookbooks=[])
       unless cookbooks.empty?
         cu = Chef::Knife::CookbookUpload.new
@@ -224,6 +245,8 @@ class Chef
       end
     end
 
+    # Upload roles to chef server
+    # Input roles expecting full path to the role
     def upload_roles(roles=[])
       unless roles.empty?
         cu = Chef::Knife::RoleFromFile.new
@@ -232,6 +255,8 @@ class Chef
       end
     end
 
+    # Upload data_bags to chef server
+    # Input data_bags expecting full path to the data_bag 
     def upload_data_bags(data_bags=[])
       unless data_bags.empty?
         data_bags.each do |data_bag_full_path|
@@ -245,6 +270,8 @@ class Chef
       end
     end
 
+    # * After a cookbook's version has been bumped, update that version to env.json too.
+    # * When propagating env, write the env_to.json with content of env_from.json. 
     def save_environment_file(env_to=Chef::Config[:jenkins][:env_to])
       Chef::Log.info("Saving environmnent #{env_to} to #{env_to}.json")
       dir = Chef::Config[:jenkins][:repo_dir]
@@ -259,17 +286,28 @@ class Chef
       @git.commit("Updating #{env_to} with the latest cookbook versions", :allow_empty => true)
     end
   
+    # Use the knife cookbook_test function provided by chef gem, 
+    # result will be printed to STDOUT
+    # Expecting input,cookbooks, as a list of names, not paths
     def knife_cookbook_test(cookbooks=[], cookbook_path=Chef::Config[:cookbook_path]) 
-      Chef::Log.info("---- knife cookbook test ----")
+      puts "-------------------"
+      puts "knife cookbook test"
+      puts "-------------------"
       cookbook_test = Chef::Knife::CookbookTest.new
       cookbook_test.config[:cookbook_path] = cookbook_path 
       cookbook_test.config[:all] = false
       cookbook_test.name_args = cookbooks
       cookbook_test.run
-      Chef::Log.info("==== Knife cookbook test passed ====")
+      puts "--------------------------"
+      puts "Knife cookbook test passed"
+      puts "--------------------------"
     end
 
+    # Run foodcritic test 
+    # Expecting input,cookbooks, as a list of names, not paths
     def foodcritic_test(cookbooks=[], cookbook_path=Chef::Config[:cookbook_path]) 
+
+      # Convert names into full_paths, as foodcritic is expecting full_paths 
       full_path_cookbooks = []
       cookbook_path.each do |path|
         cookbooks.each do |cookbook|
@@ -278,22 +316,29 @@ class Chef
         end
       end
 
-      print "\n" 
-      Chef::Log.info("---- foodcritic ----")
+      puts "---------------"
+      puts "foodcritic test"
+      puts "---------------"
       options = {}
       options[:fail_tags] = Chef::Config[:jenkins][:foodcritic][:fail_tags]
       options[:tags] = Chef::Config[:jenkins][:foodcritic][:tags]
       options[:include_rules] = Chef::Config[:jenkins][:foodcritic][:include_rules]
-      Chef::Log.info("foodcritic options: #{options}")
-      Chef::Log.info("#{options.class}")
+      puts "foodcritic options: #{options}"
       review = FoodCritic::Linter.new.check(full_path_cookbooks, options)
-      FoodCritic::ContextOutput.new.output(review)
+      FoodCritic::SummaryOutput.new.output(review)
+
       if review.failed?
-        Chef::Log.info("==== Foodcritic failed ====")
-        exit 0
+        puts "----------------------"
+        puts "Foodcritic test failed"
+        puts "----------------------"
+        exit 1
       end
+      puts "----------------------"
+      puts "Foodcritic test passed"
+      puts "----------------------"
     end
 
+    # Propagate cookbook version(s) from one environment to another
     def prop(env_from=Chef::Config[:jenkins][:env_from], env_to=Chef::Config[:jenkins][:env_to])
       add_upstream
       
@@ -311,6 +356,7 @@ class Chef
       push_to_upstream
     end
 
+    # Sync cookbooks, roles, and data_bags to chef_server while pushing changes to git repo
     def sync(cookbook_path=Chef::Config[:cookbook_path], role_path=Chef::Config[:role_path], repo_dir=Chef::Config[:jenkins][:repo_dir])
       add_upstream
 
@@ -331,36 +377,38 @@ class Chef
         data_bags_to_change = find_all_data_bags
       end
 
+      puts "==============================="
+      puts "Chef Jenkins output starts here"
+      puts "==============================="
       if cookbooks_to_change.length == 0 || cookbooks_to_change.nil?
-        Chef::Log.info("No cookbooks have changed")
+        puts "* No cookbooks have changed"
         no_cookbook_change = true
       end
 
       if roles_to_change.length == 0 || roles_to_change.nil?
-        Chef::Log.info("No roles have changed")
+        puts "* No roles have changed"
         no_role_change = true
       end
     
       if data_bags_to_change.length == 0 || data_bags_to_change.nil?
-        Chef::Log.info("No data_bags have changed")
+        puts "* No data_bags have changed"
         no_data_bag_change = true
       end
 
       if no_cookbook_change and no_role_change and no_data_bag_change
-        Chef::Log.info("Nothing to do, exit")
+        puts "* Nothing to do, exit"
         exit 0
       end
-
 
       unless no_cookbook_change
         # Run tests
         tests = Chef::Config[:test]
         if tests 
           print "\n"
-          Chef::Log.info("==== Testing Now ====")
+          puts "## Testing Start"
           knife_cookbook_test(cookbooks_to_change) if tests.include?("ruby")
           foodcritic_test(cookbooks_to_change) if tests.include?("foodcritic")
-          Chef::Log.info("==== Testing End ====")
+          puts "## Testing End"
         end
 
         # Bump cookbook patch version
