@@ -19,6 +19,42 @@ $ chef-jenkins prop --config ~/chef-jenkins.rb --env-from dev --env-to qa
 # Use the default config file - jenkins.rb
 $ chef-jenkins prop/sync
 
+# Include tests for cookbook(s) (ruby test is knife cookbook test)
+$ chef-jenkins sync --env-to ops -t ruby,foodcritic
+
+# Freeze cookbook while uploading
+$ chef-jenkins sync --env-to ops -f
+
+== Config file
+
+    current_dir = File.dirname(__FILE__)
+    log_level                :info
+    log_location             STDOUT
+    node_name                "CHEF_CLIENT_NAME"
+    client_key               "CHEF_CLIENT_KEY"
+    chef_server_url          "URL"
+    cache_type               'BasicFile'
+    cache_options            ( :path => "#{ENV['HOME']}/.chef/checksums" )
+    cookbook_path            ["#{current_dir}/cookbooks", "#{current_dir}/site-cookbooks"]
+    role_path                ["#{current_dir}/roles"]
+    data_bag_path            ["#{current_dir}/data_bags"]
+    
+    jenkins({
+      :repo_dir => current_dir,
+      :repo_url => 'CHEF_REPO_URL',
+      :git_user => "Jenkins CI",
+      :git_email => "jenkins@foo.bar",
+      :env_to => "ops",
+      :branch => "master",
+      :foodcritic => {
+        :fail_tags => ["correctness"],
+        :tags => [],
+        :include_rules => []
+      }
+    })
+
+* For details about foodcritic check rules, see http://acrmp.github.com/foodcritic/
+
 == Contributing to chef-jenkins
  
 * Check out the latest master to make sure the feature hasn't been implemented or the bug hasn't been fixed yet

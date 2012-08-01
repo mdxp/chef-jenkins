@@ -41,7 +41,7 @@ describe "Chef::Jenkins" do
 
   describe "bump_patch_level" do
     it "updates metadata.rb to have an incremented patch version" do
-      @cj.bump_patch_level(AH.file("metadata.rb"), "apache2")
+      @cj.bump_patch_level(AH.file("metadata.rb"), "ntp")
       has_correct_version = false
       IO.foreach(AH.file("metadata.rb")) do |line|
         if line =~ /^version '0\.99\.5'$/
@@ -65,10 +65,10 @@ describe "Chef::Jenkins" do
 
   describe "commit_cookbook_changes" do
     it "commits changes to git, with the number and list of cookbooks" do
-      cookbook_list = [ "apache2", "ntp" ]
+      cookbook_list = [ "ntp" ]
       cr = "\n"
       @cj.git.stub!(:commit).and_return(true)
-      @cj.git.should_receive(:commit).with("2 cookbooks patch levels updated by Chef Jenkins\n\n#{cookbook_list.join(cr)}", :add_all => true)
+      @cj.git.should_receive(:commit).with("1 cookbooks patch levels updated by Chef Jenkins\n\n#{cookbook_list.join(cr)}", :add_all => true)
       @cj.commit_cookbook_changes(cookbook_list)
     end
   end
@@ -94,11 +94,10 @@ describe "Chef::Jenkins" do
 
   describe "find_changed_cookbooks" do
     it "prints a list of cookbooks changed since last commit" do
-      system("echo '#test' >> #{AH::INFLIGHT}/cookbooks/apache2/metadata.rb")
-      system("cd #{AH::INFLIGHT}; git commit -am 'changed cookbook apache2';")
+      system("echo '#test' >> #{AH::INFLIGHT}/cookbooks/ntp/metadata.rb")
+      system("cd #{AH::INFLIGHT}; git commit -am 'changed cookbook ntp';")
       cblist = @cj.find_changed_cookbooks('HEAD^', 'HEAD', ["#{AH::INFLIGHT}/cookbooks"]) 
-      cblist.include?("apache2").should == true
-      cblist.include?("ntp").should == false 
+      cblist.include?("ntp").should == true 
     end
   end
 
@@ -128,13 +127,14 @@ describe "Chef::Jenkins" do
 
   describe "knife cookbook test" do
     it "test cookbook(s) with knife cookbook test" do
-      @cj.knife_cookbook_test(["ntp","apache2"])
+      @cj.knife_cookbook_test(["ntp"])
     end   
   end
 
   describe "foodcritic test" do
-    it "test cookbook(s) foodcritic" do
-      @cj.foodctitic_test(["ntp","apache2"])
+    require "foodcritic"
+    it "test cookbook(s) with foodcritic" do
+      @cj.foodcritic_test(["ntp"])
     end   
   end
 end

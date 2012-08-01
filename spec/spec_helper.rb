@@ -7,7 +7,6 @@ require 'chef-jenkins'
 # in ./support/ and its subdirectories.
 Dir["#{File.dirname(__FILE__)}/support/**/*.rb"].each {|f| require f}
 
-
 module AH
   ASSET_DIR = File.join(File.dirname(__FILE__), "assets")
   INFLIGHT = File.join(File.dirname(__FILE__), "in-flight")
@@ -17,7 +16,7 @@ module AH
     system("mkdir -p #{INFLIGHT}")
     system("cp -r #{File.expand_path(File.join(ASSET_DIR, "*"))} #{INFLIGHT}")
     # 
-    system("cd #{INFLIGHT}; git init; git add .; git commit -m 'init';")
+    system("cd #{INFLIGHT}; git init -q ; git add . ; git commit -m 'init';")
     true
   end
 

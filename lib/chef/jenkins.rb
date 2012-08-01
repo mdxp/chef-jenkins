@@ -31,9 +31,6 @@ require 'chef/exceptions'
 require 'chef/cookbook_loader'
 require 'chef/cookbook_uploader'
 require 'chef/cookbook_version'
-require 'foodcritic'
-require 'foodcritic/linter'
-require 'foodcritic/output'
 require 'git'
 
 class Chef
@@ -404,7 +401,9 @@ class Chef
         # Run tests
         tests = Chef::Config[:test]
         if tests 
-          print "\n"
+          require 'foodcritic'
+          require 'foodcritic/linter'
+          require 'foodcritic/output'
           puts "## Testing Start"
           knife_cookbook_test(cookbooks_to_change) if tests.include?("ruby")
           foodcritic_test(cookbooks_to_change) if tests.include?("foodcritic")

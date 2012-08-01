@@ -1,8 +1,8 @@
 #
-# Cookbook Name:: apache2
-# Recipe:: authnz_ldap 
+# Cookbook Name:: vim
+# Attributes:: default
 #
-# Copyright 2008-2009, Opscode, Inc.
+# Copyright 2010, Opscode, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,4 +17,4 @@
 # limitations under the License.
 #
 
-apache_module "authnz_ldap"
+default['vim']['extra_packages'] = []

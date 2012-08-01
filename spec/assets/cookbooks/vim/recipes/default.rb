@@ -1,8 +1,8 @@
 #
-# Cookbook Name:: apache2
-# Recipe:: mime 
+# Cookbook Name:: vim
+# Recipe:: default
 #
-# Copyright 2008-2009, Opscode, Inc.
+# Copyright 2010, Opscode, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,6 +17,19 @@
 # limitations under the License.
 #
 
-apache_module "mime" do
-  conf true
+# There is no vim package on RHEL/CentOS derivatives
+# * vim-minimal gives you /bin/vi
+# * vim-enhanced gives you /usr/bin/vim
+vim_base_pkgs = value_for_platform(
+  ["ubuntu", "debian", "arch"] => { "default" => ["vim"] },
+  ["redhat", "centos", "fedora", "scientific"] => { "default" => ["vim-minimal","vim-enhanced"] },
+  "default" => ["vim"]
+)
+
+vim_base_pkgs.each do |vim_base_pkg|
+  package vim_base_pkg
+end
+
+node['vim']['extra_packages'].each do |vimpkg|
+  package vimpkg
 end
