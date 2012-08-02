@@ -113,7 +113,7 @@ class Chef
       role_path.each do |path|
         Dir[File.join(File.expand_path(path), '*')].each do |role|
           if File.file?(role)
-            if role =~ /(#{File.expand_path(path)}\/.+\.rb)/
+            if role =~ /(#{File.expand_path(path)}\/.+\.(json|rb))/
               changed_roles << $1
             end
           end
@@ -129,7 +129,7 @@ class Chef
       @git.diff(sha1, sha2).each do |diff_file|
         role_path.each do |path|
           full_path_to_file = File.expand_path(File.join(repo_path, diff_file.path))
-          if full_path_to_file =~ /(^#{File.expand_path(path)}\/.+\.rb)/
+          if full_path_to_file =~ /(^#{File.expand_path(path)}\/.+\.(json|rb))/
             changed_roles << $1
           end
         end
@@ -145,7 +145,7 @@ class Chef
         if File.directory?(path)
           Dir[File.join(File.expand_path(path), '*')].each do |data|
             if File.file?(data)
-              if data =~ /(#{File.expand_path(path)}\/.+\.json)/
+              if data =~ /(#{File.expand_path(path)}\/.+\.(json|rb))/
                 changed_data_bags << $1
               end
             end
@@ -162,7 +162,7 @@ class Chef
       @git.diff(sha1, sha2).each do |diff_file|
         data_bag_path.each do |path|
           full_path_to_file = File.expand_path(File.join(repo_path, diff_file.path))
-          if full_path_to_file =~ /(^#{File.expand_path(path)}\/.+\.json)/
+          if full_path_to_file =~ /(^#{File.expand_path(path)}\/.+\.(json|))/
             changed_data_bags << $1
           end
         end
