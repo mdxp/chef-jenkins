@@ -95,15 +95,20 @@ class Chef
     # Will return cookbook name, not a path
     def find_changed_cookbooks(sha1, sha2, cookbook_path=Chef::Config[:cookbook_path], repo_path=Chef::Config[:jenkins][:repo_dir])
       changed_cookbooks = []
+      deleted_cookbooks = []
       @git.diff(sha1, sha2).each do |diff_file|
         cookbook_path.each do |path|
           full_path_to_file = File.expand_path(File.join(repo_path, diff_file.path))
           if full_path_to_file =~ /^#{File.expand_path(path)}\/(.+?)\/.+/
-            changed_cookbooks << $1
+            if ! File.exists?(full_path_to_file)
+              deleted_cookbooks << $1
+            else
+              changed_cookbooks << $1
+            end
           end
         end
       end
-      changed_cookbooks.uniq
+      return changed_cookbooks.uniq, deleted_cookbooks.uniq
     end
 
     # Find all roles from configured role_path
@@ -119,22 +124,27 @@ class Chef
           end
         end
       end
-      changed_roles.uniq
+      return changed_roles.uniq
     end
 
     # Find changed roles between two versions 
     # Will return full path
     def find_changed_roles(sha1, sha2, role_path=Chef::Config[:role_path], repo_path=Chef::Config[:jenkins][:repo_dir])
       changed_roles = []
+      deleted_roles = []
       @git.diff(sha1, sha2).each do |diff_file|
         role_path.each do |path|
           full_path_to_file = File.expand_path(File.join(repo_path, diff_file.path))
           if full_path_to_file =~ /(^#{File.expand_path(path)}\/.+\.(json|rb))/
-            changed_roles << $1
+            if ! File.exists?(full_path_to_file)
+              deleted_roles << $1
+            else
+              changed_roles << $1
+            end
           end
         end
       end
-      changed_roles.uniq
+      return changed_roles.uniq, deleted_roles.uniq
     end
 
     # Find all data_bag items between two versions 
@@ -159,15 +169,20 @@ class Chef
     # Will return full path
     def find_changed_data_bags(sha1, sha2, data_bag_path=Chef::Config[:data_bag_path], repo_path=Chef::Config[:jenkins][:repo_dir])
       changed_data_bags = []
+      deleted_data_bags = []
       @git.diff(sha1, sha2).each do |diff_file|
         data_bag_path.each do |path|
           full_path_to_file = File.expand_path(File.join(repo_path, diff_file.path))
           if full_path_to_file =~ /(^#{File.expand_path(path)}\/.+\.(json|))/
-            changed_data_bags << $1
+            if ! File.exists?(full_path_to_file)
+              deleted_data_bags << $1
+            else
+              changed_data_bags << $1
+            end
           end
         end
       end
-      changed_data_bags.uniq
+      return changed_data_bags.uniq, deleted_data_bags.uniq
     end
 
     def current_commit
@@ -232,7 +247,7 @@ class Chef
 
     # Upload cookbooks to chef server
     def upload_cookbooks(cookbooks=[])
-      unless cookbooks.empty?
+      unless cookbooks.empty? or cookbooks.nil?
         cu = Chef::Knife::CookbookUpload.new
         cu.name_args = cookbooks 
         cu.config[:environment] = Chef::Config[:jenkins][:env_to]
@@ -245,7 +260,7 @@ class Chef
     # Upload roles to chef server
     # Input roles expecting full path to the role
     def upload_roles(roles=[])
-      unless roles.empty?
+      unless roles.empty? or roles.nil? 
         cu = Chef::Knife::RoleFromFile.new
         cu.name_args = roles 
         cu.run
@@ -255,7 +270,7 @@ class Chef
     # Upload data_bags to chef server
     # Input data_bags expecting full path to the data_bag 
     def upload_data_bags(data_bags=[])
-      unless data_bags.empty?
+      unless data_bags.empty? or data_bags.nil?
         data_bags.each do |data_bag_full_path|
           file_name = File.basename(data_bag_full_path)
           folder_name = File.basename(File.dirname(data_bag_full_path)) 
@@ -365,9 +380,9 @@ class Chef
 
       last_commit = read_last_commit
       if last_commit
-        cookbooks_to_change = find_changed_cookbooks(last_commit, 'HEAD')
-        roles_to_change = find_changed_roles(last_commit, 'HEAD')
-        data_bags_to_change = find_changed_data_bags(last_commit, 'HEAD')
+        cookbooks_to_change, cookbooks_to_delete = find_changed_cookbooks(last_commit, 'HEAD')
+        roles_to_change, roles_to_delete = find_changed_roles(last_commit, 'HEAD')
+        data_bags_to_change, data_bags_to_delete = find_changed_data_bags(last_commit, 'HEAD')
       else
         cookbooks_to_change = find_all_cookbooks
         roles_to_change = find_all_roles
@@ -377,6 +392,7 @@ class Chef
       puts "==============================="
       puts "Chef Jenkins output starts here"
       puts "==============================="
+
       if cookbooks_to_change.length == 0 || cookbooks_to_change.nil?
         puts "* No cookbooks have changed"
         no_cookbook_change = true
