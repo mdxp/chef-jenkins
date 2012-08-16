@@ -18,6 +18,7 @@ jenkins({
   :git_email => "jenkins@promethost.com",
   :env_to => "ops",
   :branch => "master",
+  :cookbook_freeze => false,
   :foodcritic => {
     :fail_tags => ["correctness"],
     :tags => [],

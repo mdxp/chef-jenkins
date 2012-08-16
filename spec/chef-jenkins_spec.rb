@@ -96,8 +96,8 @@ describe "Chef::Jenkins" do
     it "prints a list of cookbooks changed since last commit" do
       system("echo '#test' >> #{AH::INFLIGHT}/cookbooks/ntp/metadata.rb")
       system("cd #{AH::INFLIGHT}; git commit -am 'changed cookbook ntp';")
-      cblist = @cj.find_changed_cookbooks('HEAD^', 'HEAD', ["#{AH::INFLIGHT}/cookbooks"]) 
-      cblist.include?("ntp").should == true 
+      changed_list, deleted_list = @cj.find_changed_cookbooks('HEAD^', 'HEAD', ["#{AH::INFLIGHT}/cookbooks"]) 
+      changed_list.include?("ntp").should == true 
     end
   end
 
@@ -106,7 +106,7 @@ describe "Chef::Jenkins" do
       system("echo '#test' >> #{AH::INFLIGHT}/roles/apache2.rb")
       system("echo '#test' >> #{AH::INFLIGHT}/roles/vagrant.rb")
       system("cd #{AH::INFLIGHT}; git commit -am 'changed 2 roles';")
-      role_list = @cj.find_changed_roles('HEAD^', 'HEAD', ["#{AH::INFLIGHT}/roles"]) 
+      role_list, deleted_list = @cj.find_changed_roles('HEAD^', 'HEAD', ["#{AH::INFLIGHT}/roles"]) 
       role_list = role_list.map {|i| File.basename(i)}
       role_list.include?("apache2.rb").should == true
       role_list.include?("vagrant.rb").should == true
@@ -118,7 +118,7 @@ describe "Chef::Jenkins" do
       system("echo '#test' >> #{AH::INFLIGHT}/data_bags/users/foobar.json")
       system("echo '#test' >> #{AH::INFLIGHT}/data_bags/groups/ops.json")
       system("cd #{AH::INFLIGHT}; git commit -am 'changed 2 databags';")
-      data_bag_list = @cj.find_changed_data_bags('HEAD^', 'HEAD', ["#{AH::INFLIGHT}/data_bags"]) 
+      data_bag_list, deleted_list = @cj.find_changed_data_bags('HEAD^', 'HEAD', ["#{AH::INFLIGHT}/data_bags"]) 
       data_bag_list = data_bag_list.map {|i| File.basename(i)}
       data_bag_list.include?("foobar.json").should == true
       data_bag_list.include?("ops.json").should == true

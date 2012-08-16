@@ -35,7 +35,7 @@ require 'git'
 
 class Chef
   class Jenkins
-    VERSION = "0.1.0"
+    VERSION = "0.1.2"
 
     attr_accessor :git
 
@@ -251,7 +251,13 @@ class Chef
         cu = Chef::Knife::CookbookUpload.new
         cu.name_args = cookbooks 
         cu.config[:environment] = Chef::Config[:jenkins][:env_to]
-        cu.config[:freeze] = Chef::Config[:cookbook_freeze] ? true : false
+        if Chef::Config[:cookbook_freeze]
+          cu.config[:freeze] = true
+        elsif !! Chef::Config[:jenkins][:cookbook_freeze] == Chef::Config[:jenkins][:cookbook_freeze]
+          cu.config[:freeze] = Chef::Config[:jenkins][:cookbook_freeze] 
+        else
+          cu.config[:freeze] = false
+        end
         cu.run
         save_environment_file
       end
@@ -368,8 +374,19 @@ class Chef
       push_to_upstream
     end
 
+    def save(cookbook_path=Chef::Config[:cookbook_path], role_path=Chef::Config[:role_path], repo_dir=Chef::Config[:jenkins][:repo_dir])
+      puts cookbook_path 
+      puts role_path
+      puts repo_dir
+      puts Chef::Config[:jenkins][:cookbook_freeze] 
+    end
+
+    def load()
+    end
+
     # Sync cookbooks, roles, and data_bags to chef_server while pushing changes to git repo
     def sync(cookbook_path=Chef::Config[:cookbook_path], role_path=Chef::Config[:role_path], repo_dir=Chef::Config[:jenkins][:repo_dir])
+        
       add_upstream
 
       git_branch(integration_branch_name)

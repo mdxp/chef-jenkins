@@ -21,9 +21,9 @@ require 'mixlib/log'
 
 class Chef::Application::Jenkins < Chef::Application
 
-  banner "Usage: jenkins (sync|prop) (options)"
+  banner "Usage: jenkins (sync|prop|save|load) (options)"
 
-  NO_COMMAND_GIVEN = "You need to pass either sync or prop as the first argument\n"
+  NO_COMMAND_GIVEN = "You need to pass sync|prop|save|load as the first argument\n"
 
   option :config_file,
     :short => "-c CONFIG",
@@ -54,12 +54,12 @@ class Chef::Application::Jenkins < Chef::Application
     :description => "API Client Username"
 
   option :test,
-    :short => "-t TESTS",
+    :short => "-T TESTS",
     :long => "--test TESTS",
     :description => "Add test(s) before uploading to chef server; -t ruby,foodcritic"
 
   option :cookbook_freeze,
-    :short => "-f",
+    :short => "-F",
     :long => "--freeze",
     :description => "Freeze cookbook(s) while uploading"
 
@@ -90,12 +90,56 @@ class Chef::Application::Jenkins < Chef::Application
       jenkins.sync
     elsif ARGV[0] == "prop"
       jenkins.prop(config[:env_from], config[:env_to])
+    elsif ARGV[0] == "save"
+      jenkins.save
+    elsif ARGV[0] == "load"
+      jenkins.load
     else
       Chef::Application.fatal!("You must provide sync or prop as the first argument")
     end
     exit 0
   end
 
+  def configure_chef
+    begin
+      self.parse_options
+    rescue OptionParser::InvalidOption => e
+        puts "#{e}\n"
+        puts self.opt_parser
+        exit 0
+    rescue OptionParser::MissingArgument => e
+        puts "#{e}\n"
+        puts self.opt_parser
+        exit 0
+    end
+
+    if config[:help]
+      puts self.opt_parser
+      exit 0
+    end
+
+    begin
+      case config[:config_file]
+      when /^(http|https):\/\//
+        Chef::REST.new("", nil, nil).fetch(config[:config_file]) { |f| apply_config(f.path) }
+      else
+        ::File::open(config[:config_file]) { |f| apply_config(f.path) }
+      end
+    rescue Errno::ENOENT => error
+      Chef::Log.warn("*****************************************")
+      Chef::Log.warn("Did not find config file: #{config[:config_file]}, using command line options.")
+      Chef::Log.warn("*****************************************")
+
+      Chef::Config.merge!(config)
+    rescue SocketError => error
+      Chef::Application.fatal!("Error getting config file #{Chef::Config[:config_file]}", 2)
+    rescue Chef::Exceptions::ConfigurationError => error
+      Chef::Application.fatal!("Error processing config file #{Chef::Config[:config_file]} with error #{error.message}", 2)
+    rescue Exception => error
+      Chef::Application.fatal!("Unknown error processing config file #{Chef::Config[:config_file]} with error #{error.message}", 2)
+    end
+  end
+ 
   def setup_application
   end
 
