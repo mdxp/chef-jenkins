@@ -31,6 +31,16 @@ class Chef::Application::Jenkins < Chef::Application
     :description => "The configuration file to use",
     :proc => lambda { |path| File.expand_path(path, Dir.pwd) }
 
+  option :env,
+    :short        => "-e ENVIRONMENT",
+    :long         => "--env ENVIRONMENT",
+    :description  => "The environment to save/load"
+
+  option :backup,
+    :short        => "-b BACKUP",
+    :long         => "--backup BACKUP",
+    :description  => "The backup file to save/load"
+
   option :env_to,
     :short        => "-t ENVIRONMENT",
     :long         => "--env-to ENVIRONMENT",
@@ -91,9 +101,9 @@ class Chef::Application::Jenkins < Chef::Application
     elsif ARGV[0] == "prop"
       jenkins.prop(config[:env_from], config[:env_to])
     elsif ARGV[0] == "save"
-      jenkins.save
+      jenkins.save(config[:env])
     elsif ARGV[0] == "load"
-      jenkins.load
+      jenkins.load(config[:env], config[:backup])
     else
       Chef::Application.fatal!("You must provide sync or prop as the first argument")
     end

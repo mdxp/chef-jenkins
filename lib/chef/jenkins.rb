@@ -246,6 +246,7 @@ class Chef
     end
 
     # Upload cookbooks to chef server
+    # also update cookbook versions of a specific environment, Config[:jenkins][:env_to]
     def upload_cookbooks(cookbooks=[])
       unless cookbooks.empty? or cookbooks.nil?
         cu = Chef::Knife::CookbookUpload.new
@@ -291,13 +292,18 @@ class Chef
     # * After a cookbook's version has been bumped, update that version to env.json too.
     # * When propagating env, write the env_to.json with content of env_from.json. 
     def save_environment_file(env_to=Chef::Config[:jenkins][:env_to])
+      # env_to is a name
+      # env_hash is a hash
       Chef::Log.info("Saving environmnent #{env_to} to #{env_to}.json")
       dir = Chef::Config[:jenkins][:repo_dir]
       
-      envto = Chef::Environment.load(env_to).to_hash
+      env_hash = Chef::Environment.load(env_to).to_hash
+
+      save_env(env_to)
+
       File.open(File.join(dir, "environments/#{env_to}.json"), "w") do |env_file|
-        envto['cookbook_versions'] = Hash[envto['cookbook_versions'].sort]
-        env_file.print(JSON.pretty_generate(envto))
+        env_hash['cookbook_versions'] = Hash[env_hash['cookbook_versions'].sort]
+        env_file.print(JSON.pretty_generate(env_hash))
       end
 
       @git.add("#{dir}/environments/#{env_to}.json")
@@ -374,14 +380,41 @@ class Chef
       push_to_upstream
     end
 
-    def save(cookbook_path=Chef::Config[:cookbook_path], role_path=Chef::Config[:role_path], repo_dir=Chef::Config[:jenkins][:repo_dir])
-      puts cookbook_path 
-      puts role_path
-      puts repo_dir
-      puts Chef::Config[:jenkins][:cookbook_freeze] 
+    def save(env_name)
+      save_env(env_name)
+      push_to_upstream
     end
 
-    def load()
+    def save_env(env_name)
+      timestamp = Time.now.strftime("%Y%m%d_%H%M%S")
+      backup_dir = File.join(Chef::Config[:jenkins][:repo_dir], Chef::Config[:jenkins][:backup_dir])
+      Dir.mkdir(backup_dir, 0755) unless File.exists?(backup_dir)
+
+      # env is a hash
+      env = Chef::Environment.load(env_name).to_hash
+      
+      File.open(File.join(backup_dir, "#{env_name}_#{timestamp}.json"), "w") do |backup_file|
+        backup_file.print(JSON.pretty_generate(Hash[env['cookbook_versions'].sort]))
+      end
+
+      @git.add(backup_dir)
+      @git.commit("Saved backup #{env_name}_#{timestamp}.json", :allow_empty => true)
+    end
+
+    def load(env_name, backup_file)
+      save_env(env_name)
+      env = Chef::Environment.load(env_name)
+      puts env.cookbook_versions
+      backup_dir = File.join(Chef::Config[:jenkins][:repo_dir], Chef::Config[:jenkins][:backup_dir])
+      file_full_path = File.join(backup_dir, backup_file)
+      unless File.exists?(file_full_path)
+        Chef::Log.info("Backup file #{file_full_path} doesn't exist")
+        exit 1
+      end
+      backup_cookbook_versions = JSON.parse(IO.read(file_full_path))
+      env.cookbook_versions(backup_cookbook_versions)
+      env.save
+      push_to_upstream
     end
 
     # Sync cookbooks, roles, and data_bags to chef_server while pushing changes to git repo
