@@ -101,7 +101,7 @@ class Chef::Application::Jenkins < Chef::Application
     elsif ARGV[0] == "prop"
       jenkins.prop(config[:env_from], config[:env_to])
     elsif ARGV[0] == "save"
-      jenkins.save(config[:env])
+      jenkins.save(config[:env], config[:backup])
     elsif ARGV[0] == "load"
       jenkins.load(config[:env], config[:backup])
     else

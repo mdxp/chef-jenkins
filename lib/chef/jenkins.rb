@@ -46,7 +46,7 @@ class Chef
     end
 
     # Automatically bump patch level if this is not done by any user.
-    # New added cookbook will not trigger auto bump.
+    # Newly added cookbook will not trigger auto bump.
     def bump_patch_level(metadatarb, cookbook_name)
       File.open(metadatarb, 'r+') do |f|
         lines = f.readlines
@@ -77,6 +77,7 @@ class Chef
     end
 
     # Find all cookbooks from cookbook_path that configure by user
+    # Will return cookbook name, not path
     def find_all_cookbooks(cookbook_path=Chef::Config[:cookbook_path])
       changed_cookbooks = []
       cookbook_path.each do |path|
@@ -92,7 +93,7 @@ class Chef
     end
 
     # Find changed cookbooks between two versions 
-    # Will return cookbook name, not a path
+    # Will return two lists: changed and deleted cookbook names
     def find_changed_cookbooks(sha1, sha2, cookbook_path=Chef::Config[:cookbook_path], repo_path=Chef::Config[:jenkins][:repo_dir])
       changed_cookbooks = []
       deleted_cookbooks = []
@@ -330,6 +331,9 @@ class Chef
     # Run foodcritic test 
     # Expecting input,cookbooks, as a list of names, not paths
     def foodcritic_test(cookbooks=[], cookbook_path=Chef::Config[:cookbook_path]) 
+      require 'foodcritic'
+      require 'foodcritic/linter'
+      require 'foodcritic/output'
 
       # Convert names into full_paths, as foodcritic is expecting full_paths 
       full_path_cookbooks = []
@@ -344,6 +348,7 @@ class Chef
       puts "foodcritic test"
       puts "---------------"
       options = {}
+      # The following options are read from chef-jenkins config file
       options[:fail_tags] = Chef::Config[:jenkins][:foodcritic][:fail_tags]
       options[:tags] = Chef::Config[:jenkins][:foodcritic][:tags]
       options[:include_rules] = Chef::Config[:jenkins][:foodcritic][:include_rules]
@@ -365,6 +370,7 @@ class Chef
     # Propagate cookbook version(s) from one environment to another
     def prop(env_from=Chef::Config[:jenkins][:env_from], env_to=Chef::Config[:jenkins][:env_to])
       add_upstream
+      save_env(env_to)
       
       from = Chef::Environment.load(env_from)  
       to = Chef::Environment.load(env_to)
@@ -380,38 +386,47 @@ class Chef
       push_to_upstream
     end
 
-    def save(env_name)
-      save_env(env_name)
+    # Save an env to file and push 
+    def save(env_name, backup_file)
+      add_upstream
+      save_env(env_name, backup_file)
       push_to_upstream
     end
 
-    def save_env(env_name)
+    # This will save an env to file but not pushing by iteself
+    def save_env(env_name, backup_file="")
       timestamp = Time.now.strftime("%Y%m%d_%H%M%S")
       backup_dir = File.join(Chef::Config[:jenkins][:repo_dir], Chef::Config[:jenkins][:backup_dir])
       Dir.mkdir(backup_dir, 0755) unless File.exists?(backup_dir)
 
-      # env is a hash
-      env = Chef::Environment.load(env_name).to_hash
-      
-      File.open(File.join(backup_dir, "#{env_name}_#{timestamp}.json"), "w") do |backup_file|
+      env = Chef::Environment.load(env_name).to_hash # env is a hash
+
+      if backup_file.empty?
+        file_name =  "#{env_name}_#{timestamp}.json" 
+      else
+        file_name = backup_file
+      end
+      backup_file_path = File.join(backup_dir, file_name)
+      File.open(backup_file_path, "w") do |backup_file|
         backup_file.print(JSON.pretty_generate(Hash[env['cookbook_versions'].sort]))
       end
 
-      @git.add(backup_dir)
+      @git.add(backup_file_path)
       @git.commit("Saved backup #{env_name}_#{timestamp}.json", :allow_empty => true)
     end
 
+    # update an env's cookbook_versions from a backup file
     def load(env_name, backup_file)
+      add_upstream
       save_env(env_name)
       env = Chef::Environment.load(env_name)
-      puts env.cookbook_versions
       backup_dir = File.join(Chef::Config[:jenkins][:repo_dir], Chef::Config[:jenkins][:backup_dir])
-      file_full_path = File.join(backup_dir, backup_file)
-      unless File.exists?(file_full_path)
-        Chef::Log.info("Backup file #{file_full_path} doesn't exist")
+      backup_file_path = File.join(backup_dir, backup_file)
+      unless File.exists?(backup_file_path)
+        Chef::Log.info("Backup file #{backup_file_path} doesn't exist")
         exit 1
       end
-      backup_cookbook_versions = JSON.parse(IO.read(file_full_path))
+      backup_cookbook_versions = JSON.parse(IO.read(backup_file_path))
       env.cookbook_versions(backup_cookbook_versions)
       env.save
       push_to_upstream
@@ -419,7 +434,6 @@ class Chef
 
     # Sync cookbooks, roles, and data_bags to chef_server while pushing changes to git repo
     def sync(cookbook_path=Chef::Config[:cookbook_path], role_path=Chef::Config[:role_path], repo_dir=Chef::Config[:jenkins][:repo_dir])
-        
       add_upstream
 
       git_branch(integration_branch_name)
@@ -464,12 +478,9 @@ class Chef
       end
 
       unless no_cookbook_change
-        # Run tests
+        # Run tests if command line option is set
         tests = Chef::Config[:test]
         if tests 
-          require 'foodcritic'
-          require 'foodcritic/linter'
-          require 'foodcritic/output'
           puts "## Testing Start"
           knife_cookbook_test(cookbooks_to_change) if tests.include?("ruby")
           foodcritic_test(cookbooks_to_change) if tests.include?("foodcritic")
