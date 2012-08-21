@@ -21,10 +21,14 @@ require 'chef/jenkins/config'
 require 'chef/config'
 require 'chef/log'
 require 'chef/knife'
+require 'chef/data_bag'
+require 'chef/data_bag_item'
 require 'chef/knife/core/object_loader'
 require 'chef/knife/cookbook_upload'
 require 'chef/knife/role_from_file'
 require 'chef/knife/data_bag_from_file'
+require 'chef/knife/data_bag_create'
+require 'chef/knife/data_bag_list'
 require 'chef/knife/cookbook_test'
 require 'chef/environment'
 require 'chef/exceptions'
@@ -36,6 +40,7 @@ require 'git'
 class Chef
   class Jenkins
     VERSION = "0.1.2"
+    DATA_BAG_NAME = "cookbook_versions"
 
     attr_accessor :git
 
@@ -300,8 +305,6 @@ class Chef
       
       env_hash = Chef::Environment.load(env_to).to_hash
 
-      save_env(env_to)
-
       File.open(File.join(dir, "environments/#{env_to}.json"), "w") do |env_file|
         env_hash['cookbook_versions'] = Hash[env_hash['cookbook_versions'].sort]
         env_file.print(JSON.pretty_generate(env_hash))
@@ -370,7 +373,6 @@ class Chef
     # Propagate cookbook version(s) from one environment to another
     def prop(env_from=Chef::Config[:jenkins][:env_from], env_to=Chef::Config[:jenkins][:env_to])
       add_upstream
-      save_env(env_to)
       
       from = Chef::Environment.load(env_from)  
       to = Chef::Environment.load(env_to)
@@ -386,49 +388,61 @@ class Chef
       push_to_upstream
     end
 
-    # Save an env to file and push 
-    def save(env_name, backup_file)
-      add_upstream
-      save_env(env_name, backup_file)
-      push_to_upstream
-    end
-
-    # This will save an env to file but not pushing by iteself
-    def save_env(env_name, backup_file="")
-      timestamp = Time.now.strftime("%Y%m%d_%H%M%S")
-      backup_dir = File.join(Chef::Config[:jenkins][:repo_dir], Chef::Config[:jenkins][:backup_dir])
-      Dir.mkdir(backup_dir, 0755) unless File.exists?(backup_dir)
-
+    def save(env_name, item_name="")
       env = Chef::Environment.load(env_name).to_hash # env is a hash
 
-      if backup_file.empty?
-        file_name =  "#{env_name}_#{timestamp}.json" 
-      else
-        file_name = backup_file
-      end
-      backup_file_path = File.join(backup_dir, file_name)
-      File.open(backup_file_path, "w") do |backup_file|
-        backup_file.print(JSON.pretty_generate(Hash[env['cookbook_versions'].sort]))
+      if item_name.empty?
+        timestamp = Time.now.strftime("%Y%m%d_%H%M%S")
+        item_name = "#{env_name}_#{timestamp}"
       end
 
-      @git.add(backup_file_path)
-      @git.commit("Saved backup #{env_name}_#{timestamp}.json", :allow_empty => true)
+      raw_data = Hash.new
+      raw_data = {"id" => item_name, "cookbook_versions" => Hash[env['cookbook_versions'].sort]}
+
+      data_bag = Chef::Config[:jenkins][:data_bag_name] ? Chef::Config[:jenkins][:data_bag_name] : DATA_BAG_NAME 
+
+      # Create the data bag if it's missing 
+      unless Chef::DataBag.list.include?(data_bag)
+        Chef::Log.info("creating data_bag #{data_bag}")
+        db = Chef::Knife::DataBagCreate.new
+        db.name_args = data_bag
+        db.run
+      end
+
+      dbi = Chef::DataBagItem.new
+      dbi.data_bag(data_bag)
+      dbi.raw_data = raw_data 
+
+      # save existing item or create new item
+      begin 
+        Chef::DataBagItem.load(data_bag, item_name)
+        dbi.save
+        Chef::Log.info("Saved data bag")
+      rescue Net::HTTPServerException
+        dbi.create
+        Chef::Log.info("Created data bag")
+      end
+      Chef::Log.info("Cookbook versions of Env: #{env_name} saved to DataBag: #{data_bag}/#{item_name}")
     end
 
     # update an env's cookbook_versions from a backup file
-    def load(env_name, backup_file)
+    def load(env_name, item_name)
       add_upstream
-      save_env(env_name)
       env = Chef::Environment.load(env_name)
-      backup_dir = File.join(Chef::Config[:jenkins][:repo_dir], Chef::Config[:jenkins][:backup_dir])
-      backup_file_path = File.join(backup_dir, backup_file)
-      unless File.exists?(backup_file_path)
-        Chef::Log.info("Backup file #{backup_file_path} doesn't exist")
-        exit 1
+      data_bag = Chef::Config[:jenkins][:data_bag_name] ? Chef::Config[:jenkins][:data_bag_name] : DATA_BAG_NAME
+
+      begin
+        item = Chef::DataBagItem.load(data_bag, item_name)
+      rescue Net::HTTPServerException
+        Chef::Log.info("DataBag or DataBagItem does not exists")
+        exit 0
       end
-      backup_cookbook_versions = JSON.parse(IO.read(backup_file_path))
-      env.cookbook_versions(backup_cookbook_versions)
+
+      new_cookbook_versions = item['cookbook_versions']
+      env.cookbook_versions(new_cookbook_versions)
       env.save
+      Chef::Log.info("Loaded DataBag: #{data_bag}/#{item_name} into Env: #{env_name}")
+      save_environment_file(env_name)
       push_to_upstream
     end
 

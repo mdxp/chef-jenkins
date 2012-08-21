@@ -39,7 +39,7 @@ class Chef::Application::Jenkins < Chef::Application
   option :backup,
     :short        => "-b BACKUP",
     :long         => "--backup BACKUP",
-    :description  => "The backup file to save/load"
+    :description  => "The backup to save/load"
 
   option :env_to,
     :short        => "-t ENVIRONMENT",
@@ -66,7 +66,7 @@ class Chef::Application::Jenkins < Chef::Application
   option :test,
     :short => "-T TESTS",
     :long => "--test TESTS",
-    :description => "Add test(s) before uploading to chef server; -t ruby,foodcritic"
+    :description => "Add test(s) before uploading to chef server; -T ruby,foodcritic"
 
   option :cookbook_freeze,
     :short => "-F",
