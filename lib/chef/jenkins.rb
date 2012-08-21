@@ -439,6 +439,7 @@ class Chef
       end
 
       new_cookbook_versions = item['cookbook_versions']
+      env.default_attributes['env_version_tag'] = item_name
       env.cookbook_versions(new_cookbook_versions)
       env.save
       Chef::Log.info("Loaded DataBag: #{data_bag}/#{item_name} into Env: #{env_name}")
