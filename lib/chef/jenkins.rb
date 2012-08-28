@@ -41,6 +41,8 @@ class Chef
   class Jenkins
     VERSION = "0.1.2"
     DATA_BAG_NAME = "cookbook_versions"
+    DEFAULT_ENV = "ops"
+    LATEST_TAG = "latest_tag"
 
     attr_accessor :git
 
@@ -391,14 +393,61 @@ class Chef
     def save(env_name, item_name="")
       env = Chef::Environment.load(env_name).to_hash # env is a hash
 
-      if item_name.empty?
-        timestamp = Time.now.strftime("%Y%m%d_%H%M%S")
-        item_name = "#{env_name}_#{timestamp}"
+      # Auto tagging when saving without a backup item name 
+      if item_name.nil? or item_name.empty?
+        # Test data_bag (latest_tag) existence 
+        begin
+          item = Chef::DataBagItem.load(DATA_BAG_NAME, LATEST_TAG)
+          env_version_tag = item[LATEST_TAG]  
+          if env_version_tag =~ /(\d+)\_(\d+)/
+            major = $1
+            minor = $2 + 1
+            item_name = "#{major}_#{minor}" 
+            Chef::Log.info("Latest tag bumped to #{item_name}")
+          else
+            Chef::Log.info("error with latest_data_bag -> latest_tag")
+            exit 1
+          end
+        rescue Net::HTTPServerException
+          # Create the data_bag 
+          unless Chef::DataBag.list.include?(DATA_BAG_NAME)
+            Chef::Log.info("creating data_bag #{DATA_BAG_NAME}")
+            db = Chef::Knife::DataBagCreate.new
+            db.name_args = DATA_BAG_NAME
+            db.run
+          end
+          # Create the data_bag_item
+          dbi = Chef::DataBagItem.new
+          dbi.data_bag(DATA_BAG_NAME)
+          raw_data = Hash.new
+          raw_data = {"id" => LATEST_TAG, LATEST_TAG => ""}
+          dbi.raw_data = raw_data 
+          dbi.create
+          
+          Chef::Log.info("Latest tag initialized as 0.1")
+          item_name = "0_1"
+        end
+        # Data bag and item available
+        # Save back to the latest tag
+
+        raw_data = Hash.new
+        raw_data = {"id" => LATEST_TAG, LATEST_TAG => item_name}
+
+        dbi = Chef::DataBagItem.new
+        dbi.data_bag(DATA_BAG_NAME)
+        dbi.raw_data = raw_data 
+
+        # Save or create data_bag item
+        dbi.save
+        Chef::Log.info("Saved data bag: #{DATA_BAG_NAME}/#{LATEST_TAG} = #{item_name}")
       end
+
+      # item_name ready
 
       raw_data = Hash.new
       raw_data = {"id" => item_name, "cookbook_versions" => Hash[env['cookbook_versions'].sort]}
 
+      # The data bag to store the actual versions of each cookbook
       data_bag = Chef::Config[:jenkins][:data_bag_name] ? Chef::Config[:jenkins][:data_bag_name] : DATA_BAG_NAME 
 
       # Create the data bag if it's missing 
@@ -409,13 +458,14 @@ class Chef
         db.run
       end
 
+      # create the data bag item 
       dbi = Chef::DataBagItem.new
       dbi.data_bag(data_bag)
       dbi.raw_data = raw_data 
 
-      # save existing item or create new item
+      # save item or create new item
       begin 
-        Chef::DataBagItem.load(data_bag, item_name)
+        Chef::DataBagItem.load(data_bag, item_name) # test existance 
         dbi.save
         Chef::Log.info("Saved data bag")
       rescue Net::HTTPServerException
