@@ -376,6 +376,7 @@ class Chef
     def prop(env_from=Chef::Config[:jenkins][:env_from], env_to=Chef::Config[:jenkins][:env_to])
       add_upstream
       
+      save(env_from)
       from = Chef::Environment.load(env_from)  
       to = Chef::Environment.load(env_to)
 
@@ -401,7 +402,7 @@ class Chef
           env_version_tag = item[LATEST_TAG]  
           if env_version_tag =~ /(\d+)\_(\d+)/
             major = $1
-            minor = $2 + 1
+            minor = $2.to_i + 1
             item_name = "#{major}_#{minor}" 
             Chef::Log.info("Latest tag bumped to #{item_name}")
           else
