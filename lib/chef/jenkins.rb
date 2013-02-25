@@ -376,7 +376,7 @@ class Chef
     def prop(env_from=Chef::Config[:jenkins][:env_from], env_to=Chef::Config[:jenkins][:env_to])
       add_upstream
       
-      save(env_from)
+      #save(env_from)
       from = Chef::Environment.load(env_from)  
       to = Chef::Environment.load(env_to)
 
