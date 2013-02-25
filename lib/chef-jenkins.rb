@@ -1,4 +1,5 @@
 #
+# Author:: Marius Ducea (<marius.ducea@gmail.com>)
 # Author:: Adam Jacob (<adam@opscode.com>)
 # Copyright:: Copyright (c) 2011 Opscode, Inc.
 # License:: Apache License, Version 2.0
@@ -17,4 +18,4 @@
 #
 
 require 'chef/jenkins'
-
+require "chef/jenkins/version"
