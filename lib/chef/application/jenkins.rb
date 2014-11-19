@@ -134,7 +134,7 @@ class Chef::Application::Jenkins < Chef::Application
       when /^(http|https):\/\//
         Chef::REST.new("", nil, nil).fetch(config[:config_file]) { |f| apply_config(f.path) }
       else
-        ::File::open(config[:config_file]) { |f| apply_config(f.path) }
+	load_config_file
       end
     rescue Errno::ENOENT => error
       Chef::Log.warn("*****************************************")
